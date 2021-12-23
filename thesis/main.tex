@@ -18,10 +18,10 @@
 % run, let it finish, and you should be clear).
 %\usepackage[breaklinks=true,bookmarks=false]{hyperref}
 \usepackage[colorlinks = true,
-            linkcolor = blue,
+            linkcolor = green,
             %urlcolor  = blue,
             citecolor = green,
-            anchorcolor = blue,
+            anchorcolor = green,
             breaklinks=true,bookmarks=false]{hyperref}
 
 \cvprfinalcopy % *** Uncomment this line for the final submission
@@ -235,7 +235,7 @@ And with the above equations, we are able to reformulate the objective function 
 Then we should optimize $D$ such that $V(G,D)$ can reach the maximum.
 \begin{align*}
     &\max_DV(G,D)\\ &= \max_D\int_xp_{data}(x)\log{\big(D(x)\big)}+p_g(x)\log{(1-D(x))}dx\\
-    &\Longrightarrow\frac{\partial}{\partial{D(x)}}(p_{data}(x)\log{\big(D(x)\big)}+p_g(x)\log{(1-D(x))}) = 0\\
+    &\Longrightarrow\frac{\partial{(p_{data}(x)\log{\big(D(x)\big)}+p_g(x)\log{(1-D(x))})}}{\partial{D(x)}} = 0\\
     &\Longrightarrow \frac{p_{data}(x)}{D(x)} - \frac{p_g(x)}{1-D(x)} = 0\\
     &\Longrightarrow D(x) = \frac{p_{data}(x)}{p_{data}(x)+p_g(x)}
 \end{align*}
@@ -260,21 +260,119 @@ Since, we know that the optimal solution of $D$ is $ D_G^*(x) = \frac{p_{data}(x
     &+p_g(x)\log{(\frac{p_{g}(x)}{\frac{p_{data}(x)+p_g(x)}{2}})}dx-2\log{2}\\
     &=KL[p_{data}||\frac{p_{data}(x)+p_g(x)}{2}] + KL[p_g(x)||\frac{p_{data}(x)+p_g(x)}{2}]-\log{4}
 \end{align*}
-Since KL-Divergence is non-negative:
+Since KL-Divergence is non-negative\cite{bousquet2011advanced}:
 \begin{align*}
     \min_GC(G) = 0 + 0 - \log(4) = -\log(4)
 \end{align*}
 \end{proof}
 
 \section{Implementation and experiment}
+\subsection{Vanilla GAN}
+We determined to use MNIST\cite{726791} for training the adversarial nets. \footnote{All code can be found: \href{https://github.com/qiaw99/Understanding-and-implementation-of-Generative-Adversarial-Nets}{https://github.com/qiaw99/Understanding-and-implementation-of-Generative-Adversarial-Nets}} Firstly, we will generate uniform noise from $-1$ to $1$ with shape (batch\_size, dimension). Then we build a discriminator.
+All fully connected layers should include bias terms. The architecture using only fully connected layers is:
+\begin{itemize}
+    \item Fully connected layer with input size 784 and output size 256
+    \item Leaky ReLU with alpha 0.01
+    \item Fully connected layer with input size 256 and output size 256
+    \item Leaky ReLU with alpha 0.01 
+    \item Fully connected layer with input size 256 and output size 1
+\end{itemize}
+For the Leaky ReLU nonlinearities in the architecture above we set $\alpha=0.01$.
+ 
+The output of the discriminator should have shape (batch size, 1), and contain real numbers corresponding to the scores that each of the batch size inputs is a real image.
 
-\subsection{Improvement especially for images}
+Now to build the generator network:
+\begin{itemize}
+    \item Fully connected layer from noise dim to 1024
+    \item ReLU
+    \item Fully connected layer with size 1024
+    \item ReLU
+    \item Fully connected layer with size 784
+    \item TanH (to clip the image to be in the range of [-1,1])
+\end{itemize}
 
-\section{Disadvantage of GAN}
+Next, compute the generator and discriminator loss. The generator loss is:
+$$\ell_G  =  -\mathbb{E}_{z \sim p(z)}\left[\log D(G(z))\right]$$
+and the discriminator loss is:
+$$ \ell_D = -\mathbb{E}_{x \sim p_\text{data}}\left[\log D(x)\right] - \mathbb{E}_{z \sim p(z)}\left[\log \left(1-D(G(z))\right)\right]$$
+Note that these are negated from the equations presented earlier as we will be minimizing these losses. We should use the binary cross entropy loss which is needed to compute the log probability of the true label given the logits output from the discriminator. Given a score $s\in\mathbb{R}$ and a label $y\in\{0, 1\}$, the binary cross entropy loss is
+$$ bce(s, y) = -y * \log(s) - (1 - y) * \log(1 - s) $$
 
-\subsection{Further work}
+Instead of computing the expectation of $\log D(G(z))$, $\log D(x)$ and $\log \left(1-D(G(z))\right)$, we will be averaging over elements of the minibatch. In the end, using backpropagation to optimize parameters in each models.
 
-\section{Conclusion}
+Here is the result of generated MNIST image: 
+\begin{figure}[htpb]
+\begin{center}
+   \includegraphics[scale=1]{images/gan.png}
+\end{center}
+   \caption{\footnotesize This figure shows generated MNIST image}
+\end{figure}
+
+\subsection{Improvements}
+\subsubsection{Least Squares GAN}
+We'll now look at Least Squares GAN\cite{DBLP:journals/corr/MaoLXLW16}, a newer, more stable alernative to the original GAN loss function. For this part, all we have to do is change the loss function and retrain the model. We'll implement equation (9) in the paper, with the generator loss:
+$$\ell_G  =  \frac{1}{2}\mathbb{E}_{z \sim p(z)}\left[\left(D(G(z))-1\right)^2\right]$$
+and the discriminator loss:
+$$ \ell_D = \frac{1}{2}\mathbb{E}_{x \sim p_\text{data}}\left[\left(D(x)-1\right)^2\right] + \frac{1}{2}\mathbb{E}_{z \sim p(z)}\left[ \left(D(G(z))\right)^2\right]$$
+Instead of computing the expectation, we will be averaging over elements of the minibatch.
+
+Here is the result of generated MNIST image using LSGAN: 
+\begin{figure}[htpb]
+\begin{center}
+   \includegraphics[scale=1]{images/lsgan.png}
+\end{center}
+   \caption{\footnotesize This figure shows generated MNIST image using LSGAN}
+\end{figure}
+
+\subsubsection{Deeply Convolutional GANs}
+In the first part, we implemented an almost direct copy of the original GAN network from Ian Goodfellow\cite{goodfellow2014generative}. However, this network architecture allows no real spatial reasoning. It is unable to reason about things like "sharp edges" in general because it lacks any convolutional layers. Thus, in this section, we will implement some of the ideas from DCGAN\cite{radford2016unsupervised}, where we use convolutional networks.
+
+We will use a discriminator inspired by the TensorFlow MNIST classification tutorial, which is able to get above 99\% accuracy on the MNIST dataset fairly quickly. 
+\begin{itemize}
+    \item Reshape into image tensor using flatten
+    \item Conv2D: 32 Filters, 5x5, Stride 1
+    \item Leaky ReLU(alpha=0.01)
+    \item Max Pool 2x2, Stride 2
+    \item Conv2D: 64 Filters, 5x5, Stride 1
+    \item Leaky ReLU(alpha=0.01)
+    \item Max Pool 2x2, Stride 2
+    \item Flatten
+    \item Fully Connected with output size 4 x 4 x 64
+    \item Leaky ReLU(alpha=0.01)
+    \item Fully Connected with output size 1
+\end{itemize}
+
+For the generator, we will copy the architecture exactly from the InfoGAN\cite{DBLP:journals/corr/ChenDHSSA16} paper. 
+\begin{itemize}
+    \item Fully connected with output size 1024
+    \item ReLU
+    \item BatchNorm
+    \item Fully connected with output size 7 x 7 x 128 
+    \item ReLU
+    \item BatchNorm
+    \item Reshape into Image Tensor of shape 7, 7, 128
+    \item $Conv2D^T$ (Transpose): 64 filters of 4x4, stride 2, same padding
+    \item ReLU
+    \item BatchNorm
+    \item $Conv2D^T$ (Transpose): 1 filter of 4x4, stride 2, same padding
+    \item TanH
+    \item Should have a 28x28x1 image, reshape back into 784 vector
+\end{itemize}
+Here is the result of generated MNIST image using DCGAN: 
+\begin{figure}[htpb]
+\begin{center}
+   \includegraphics[scale=1]{images/dcgan.png}
+\end{center}
+   \caption{\footnotesize This figure shows generated MNIST image using DCGAN}
+\end{figure}
+
+
+\section{Problems of GANs}
+\begin{itemize}
+    \item No convergence guarantee: Although it is proved that GAN can reach Nash equilibrium. However, in our practical implementation, we are optimizing in the parameter space, not the function space, which leads that simultaneous Gradient Descent generally not guaranteed to reach equilibrium.
+    \item Long convergence time.
+    \item Criticizing is easy. Discriminator is usually more powerful than generator which leads to vanishing gradients of generator\cite{arjovsky2017towards}.
+\end{itemize}
 
 {\small
 \bibliographystyle{ieee}
